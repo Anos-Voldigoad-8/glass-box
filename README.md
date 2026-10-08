@@ -139,7 +139,7 @@ gb.configure(
     endpoint="http://your-server:8000",  # Default: localhost:8000
     api_key="your-api-key",              # Optional for auth
     batch_size=10,                       # Send in batches of 10
-    flush_interval=2.0                   # Flush every 2 seconds
+    flush_interval=1.0                   # Flush every 1 second
 )
 ```
 

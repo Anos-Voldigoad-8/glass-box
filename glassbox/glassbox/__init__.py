@@ -19,6 +19,7 @@ from .tracer import (
     step,
     trace_decorator,
     capture_llm_call,
+    log,
 )
 from .types import (
     SpanType,
@@ -53,6 +54,7 @@ __all__ = [
     "step",
     "trace_decorator",
     "capture_llm_call",
+    "log",
     
     # Types
     "SpanType",

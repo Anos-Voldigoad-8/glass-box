@@ -22,7 +22,8 @@ Cyberpunk/terminal-themed observability dashboard for GLASS BOX.
 ## Setup
 
 1. Ensure the GLASS BOX backend is running on http://localhost:8000
-2. Open dashboard/index.html in a browser
+2. Open http://localhost:8000/dashboard/ in a browser (served by backend)
+   - Or open dashboard/index.html directly (auto-detects backend from window.location)
 3. The dashboard will automatically connect to the backend via WebSocket
 
 ## Development

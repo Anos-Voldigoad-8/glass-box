@@ -43,7 +43,7 @@ dev = [
 # Package discovery
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["glassbox*"]
+include = ["glassbox"]
 
 # Tool configurations
 [tool.ruff]

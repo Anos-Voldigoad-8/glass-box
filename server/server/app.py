@@ -15,14 +15,16 @@ import asyncio
 from contextlib import asynccontextmanager
 import os
 
+
 # Database setup
 DATABASE_URL = "glassbox.db"
+
 
 def init_db():
     """Initialize the database with required tables."""
     conn = sqlite3.connect(DATABASE_URL)
     cursor = conn.cursor()
-    
+
     # Traces table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS traces (
@@ -36,7 +38,7 @@ def init_db():
             metadata TEXT
         )
     """)
-    
+
     # Spans table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS spans (
@@ -54,15 +56,22 @@ def init_db():
             FOREIGN KEY (trace_id) REFERENCES traces (id)
         )
     """)
-    
+
+    # Migration: add logs column if missing
+    cursor.execute("PRAGMA table_info(spans)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "logs" not in columns:
+        cursor.execute("ALTER TABLE spans ADD COLUMN logs TEXT")
+
     # Indexes for better query performance
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_spans_trace_id ON spans(trace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_spans_parent_id ON spans(parent_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_traces_start_time ON traces(start_time)")
-    
+
     conn.commit()
     conn.close()
+
 
 # Pydantic models for API
 class TokenUsage(BaseModel):
@@ -71,6 +80,7 @@ class TokenUsage(BaseModel):
     total_tokens: int = 0
     cost_usd: float = 0.0
     model: str = ""
+
 
 class SpanBase(BaseModel):
     id: str
@@ -84,9 +94,13 @@ class SpanBase(BaseModel):
     duration_ms: float
     metadata: Dict[str, Any] = {}
     token_usage: Optional[TokenUsage] = None
+    logs: Optional[List[Dict[str, Any]]] = None
+    children: Optional[List["SpanBase"]] = None
+
 
 class SpanCreate(SpanBase):
     pass
+
 
 class TraceBase(BaseModel):
     id: str
@@ -98,17 +112,21 @@ class TraceBase(BaseModel):
     duration_ms: float
     metadata: Dict[str, Any] = {}
 
+
 class TraceCreate(TraceBase):
     spans: List[SpanCreate] = []
 
+
 class TraceResponse(TraceBase):
     spans: List[SpanBase] = []
+
 
 class MetricsUpdate(BaseModel):
     total_tokens: int = 0
     total_cost: float = 0.0
     avg_latency: float = 0.0
     error_count: int = 0
+
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -120,26 +138,25 @@ class ConnectionManager:
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
 
     async def send_personal_message(self, message: dict, websocket: WebSocket):
         try:
             await websocket.send_json(message)
-        except:
-            # Remove broken connection
-            if websocket in self.active_connections:
-                self.active_connections.remove(websocket)
+        except Exception:
+            self.disconnect(websocket)
 
     async def broadcast(self, message: dict):
         for connection in self.active_connections[:]:
             try:
                 await connection.send_json(message)
-            except:
-                # Remove broken connection
-                if connection in self.active_connections:
-                    self.active_connections.remove(connection)
+            except Exception:
+                self.disconnect(connection)
+
 
 manager = ConnectionManager()
+
 
 # Database dependency
 def get_db():
@@ -150,6 +167,7 @@ def get_db():
     finally:
         conn.close()
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -157,6 +175,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     pass
+
 
 # Create FastAPI app
 app = FastAPI(
@@ -169,7 +188,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -179,11 +198,26 @@ app.add_middleware(
 dashboard_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "dashboard")
 app.mount("/dashboard", StaticFiles(directory=dashboard_path, html=True), name="dashboard")
 
+
+def build_span_tree(spans: List[SpanBase]) -> List[SpanBase]:
+    """Build parent-child tree structure from flat list of spans."""
+    span_map = {s.id: s for s in spans}
+    for span in spans:
+        span.children = []
+    root_spans = []
+    for span in spans:
+        if span.parent_id and span.parent_id in span_map:
+            span_map[span.parent_id].children.append(span)
+        else:
+            root_spans.append(span)
+    return root_spans
+
+
 # Helper functions
 def row_to_trace(row) -> TraceResponse:
-    """Convert database row to TraceResponse."""
+    """Convert database row to TraceResponse with nested span tree."""
     trace_id = row['id']
-    
+
     # Get spans for this trace
     conn = sqlite3.connect(DATABASE_URL)
     conn.row_factory = sqlite3.Row
@@ -191,9 +225,16 @@ def row_to_trace(row) -> TraceResponse:
     cursor.execute("SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time", (trace_id,))
     span_rows = cursor.fetchall()
     conn.close()
-    
+
     spans = []
     for span_row in span_rows:
+        logs_data = None
+        if span_row['logs']:
+            try:
+                logs_data = json.loads(span_row['logs'])
+            except Exception:
+                logs_data = None
+
         spans.append(SpanBase(
             id=span_row['id'],
             trace_id=span_row['trace_id'],
@@ -205,9 +246,13 @@ def row_to_trace(row) -> TraceResponse:
             end_time=span_row['end_time'],
             duration_ms=span_row['duration_ms'],
             metadata=json.loads(span_row['metadata']) if span_row['metadata'] else {},
-            token_usage=json.loads(span_row['token_usage']) if span_row['token_usage'] else None
+            token_usage=json.loads(span_row['token_usage']) if span_row['token_usage'] else None,
+            logs=logs_data,
         ))
-    
+
+    # Build tree structure for frontend
+    root_spans = build_span_tree(spans)
+
     return TraceResponse(
         id=row['id'],
         name=row['name'],
@@ -217,15 +262,16 @@ def row_to_trace(row) -> TraceResponse:
         end_time=row['end_time'],
         duration_ms=row['duration_ms'],
         metadata=json.loads(row['metadata']) if row['metadata'] else {},
-        spans=spans
+        spans=root_spans
     )
+
 
 # Routes
 @app.post("/ingest")
 async def ingest_trace(trace: TraceCreate, db: sqlite3.Connection = Depends(get_db)):
     """Ingest a trace from the SDK."""
     cursor = db.cursor()
-    
+
     try:
         # Insert trace
         cursor.execute("""
@@ -241,12 +287,13 @@ async def ingest_trace(trace: TraceCreate, db: sqlite3.Connection = Depends(get_
             trace.duration_ms,
             json.dumps(trace.metadata)
         ))
-        
+
         # Insert spans
         for span in trace.spans:
+            logs_json = json.dumps(span.logs) if span.logs else None
             cursor.execute("""
-                INSERT INTO spans (id, trace_id, parent_id, name, span_type, status, start_time, end_time, duration_ms, metadata, token_usage)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO spans (id, trace_id, parent_id, name, span_type, status, start_time, end_time, duration_ms, metadata, token_usage, logs)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 span.id,
                 span.trace_id,
@@ -258,19 +305,21 @@ async def ingest_trace(trace: TraceCreate, db: sqlite3.Connection = Depends(get_
                 span.end_time,
                 span.duration_ms,
                 json.dumps(span.metadata),
-                json.dumps(span.token_usage.dict() if span.token_usage else None)
+                json.dumps(span.token_usage.dict() if span.token_usage else None),
+                logs_json
             ))
-        
+
         db.commit()
-        
+
         # Broadcast to WebSocket clients
         await broadcast_trace(trace.dict())
-        
+
         return {"status": "success", "trace_id": trace.id}
-    
+
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/sessions", response_model=List[TraceResponse])
 async def list_sessions(
@@ -282,23 +331,24 @@ async def list_sessions(
     """List all traces/sessions."""
     query = "SELECT * FROM traces"
     params = []
-    
+
     if status:
         query += " WHERE status = ?"
         params.append(status)
-    
+
     query += " ORDER BY start_time DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
-    
+
     cursor = db.cursor()
     cursor.execute(query, params)
     rows = cursor.fetchall()
-    
+
     traces = []
     for row in rows:
         traces.append(row_to_trace(row))
-    
+
     return traces
+
 
 @app.get("/sessions/{trace_id}", response_model=TraceResponse)
 async def get_trace(trace_id: str, db: sqlite3.Connection = Depends(get_db)):
@@ -306,16 +356,18 @@ async def get_trace(trace_id: str, db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("SELECT * FROM traces WHERE id = ?", (trace_id,))
     row = cursor.fetchone()
-    
+
     if not row:
         raise HTTPException(status_code=404, detail="Trace not found")
-    
+
     return row_to_trace(row)
+
 
 @app.get("/sessions/{trace_id}/trace")
 async def get_trace_detail(trace_id: str, db: sqlite3.Connection = Depends(get_db)):
     """Get detailed trace information (alias for get_trace)."""
     return await get_trace(trace_id, db)
+
 
 @app.websocket("/live")
 async def websocket_endpoint(websocket: WebSocket):
@@ -333,6 +385,7 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"WebSocket error: {e}")
         manager.disconnect(websocket)
 
+
 async def broadcast_trace(trace_data: dict):
     """Broadcast trace data to all connected WebSocket clients."""
     await manager.broadcast({
@@ -340,41 +393,43 @@ async def broadcast_trace(trace_data: dict):
         "payload": trace_data
     })
 
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "service": "glassbox-backend", "version": "0.1.0"}
 
+
 # Statistics endpoint
 @app.get("/stats")
 async def get_stats(db: sqlite3.Connection = Depends(get_db)):
     """Get basic statistics about stored traces."""
     cursor = db.cursor()
-    
+
     # Total traces
     cursor.execute("SELECT COUNT(*) FROM traces")
     total_traces = cursor.fetchone()[0]
-    
+
     # Total spans
     cursor.execute("SELECT COUNT(*) FROM spans")
     total_spans = cursor.fetchone()[0]
-    
+
     # Status breakdown
     cursor.execute("""
-        SELECT status, COUNT(*) as count 
-        FROM traces 
+        SELECT status, COUNT(*) as count
+        FROM traces
         GROUP BY status
     """)
     status_counts = dict(cursor.fetchall())
-    
+
     # Recent activity (last hour)
     cursor.execute("""
-        SELECT COUNT(*) FROM traces 
+        SELECT COUNT(*) FROM traces
         WHERE datetime(start_time) > datetime('now', '-1 hour')
     """)
     recent_traces = cursor.fetchone()[0]
-    
+
     return {
         "total_traces": total_traces,
         "total_spans": total_spans,
@@ -382,6 +437,7 @@ async def get_stats(db: sqlite3.Connection = Depends(get_db)):
         "recent_traces_last_hour": recent_traces
     }
 
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

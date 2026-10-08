@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 import time
 import uuid
@@ -15,6 +16,8 @@ import httpx
 
 from .types import Span, SpanType, SpanStatus, TokenUsage, Trace, extract_token_usage
 
+logger = logging.getLogger(__name__)
+
 
 class GlassboxClient:
     """Client for sending traces to GLASS BOX backend."""
@@ -25,11 +28,13 @@ class GlassboxClient:
         api_key: str | None = None,
         batch_size: int = 10,
         flush_interval: float = 1.0,
+        logger: Optional[logging.Logger] = None,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.api_key = api_key
         self.batch_size = batch_size
         self.flush_interval = flush_interval
+        self._logger = logger or logging.getLogger(__name__)
 
         self._buffer: deque[Span] = deque()
         self._lock = threading.Lock()
@@ -71,8 +76,8 @@ class GlassboxClient:
                 data = span.to_dict()
                 client.post(f"{self.endpoint}/ingest", json=data, headers=headers)
             client.close()
-        except Exception:
-            pass  # Silently fail to not disrupt the traced code
+        except Exception as e:
+            self._logger.error("Sync flush failed", exc_info=e)
 
     async def _flush_async(self) -> None:
         """Flush buffer asynchronously."""
@@ -95,8 +100,8 @@ class GlassboxClient:
             for span in spans:
                 data = span.to_dict()
                 await client.post(f"{self.endpoint}/ingest", json=data, headers=headers)
-        except Exception:
-            pass
+        except Exception as e:
+            self._logger.error("Async flush failed", exc_info=e)
 
     async def _periodic_flush(self) -> None:
         """Periodically flush the buffer."""
@@ -137,9 +142,15 @@ class GlassboxClient:
             cost = calculate_cost(model, usage.prompt_tokens, usage.completion_tokens)
             usage.cost_usd = cost
 
+        from .context import get_current_trace, get_current_span
+
+        current_trace = get_current_trace()
+        current_span = get_current_span()
+
         span = Span(
             id=str(uuid.uuid4()),
-            trace_id=str(uuid.uuid4()),
+            trace_id=current_trace.id if current_trace else str(uuid.uuid4()),
+            parent_id=current_span.id if current_span else None,
             name=f"llm_call:{model}",
             span_type=SpanType.LLM_CALL,
             metadata={
@@ -155,12 +166,42 @@ class GlassboxClient:
             span.add_token_usage(usage)
 
         span.finish(SpanStatus.SUCCESS)
-        self.add_span(span)
+
+        if current_trace:
+            current_trace.add_span(span)
+        else:
+            self.add_span(span)
         return span
 
     def flush(self) -> None:
         """Flush all buffered spans."""
         self._flush_sync()
+
+    def add_trace(self, trace: Trace) -> None:
+        """Send a complete trace with all spans to the backend."""
+        try:
+            client = httpx.Client(timeout=10.0)
+            headers = {}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+
+            # Convert trace to the format expected by the server
+            trace_data = {
+                "id": trace.id,
+                "name": trace.name,
+                "agent_name": trace.agent_name,
+                "status": trace.status.value if hasattr(trace.status, 'value') else trace.status,
+                "start_time": trace.start_time.isoformat() if trace.start_time else None,
+                "end_time": trace.end_time.isoformat() if trace.end_time else None,
+                "duration_ms": trace.duration_ms,
+                "metadata": trace.metadata,
+                "spans": [span.to_dict() for span in trace.spans.values()]
+            }
+
+            client.post(f"{self.endpoint}/ingest", json=trace_data, headers=headers)
+            client.close()
+        except Exception as e:
+            self._logger.error("Failed to send trace", exc_info=e)
 
     async def aclose(self) -> None:
         """Close the client and flush."""

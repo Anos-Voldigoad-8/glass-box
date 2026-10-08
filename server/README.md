@@ -33,11 +33,11 @@ WebSocket endpoint for live trace updates.
 
 2. Run the server:
    ```bash
-   python -m server.main
+   python -m server.app
    ```
    or
    ```bash
-   uvicorn server.main:app --reload
+   uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
    ```
 
 3. The server will be available at http://localhost:8000
@@ -73,5 +73,5 @@ The backend stores traces and spans in SQLite database with the following schema
 
 To run with auto-reload during development:
 ```bash
-uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
 ```

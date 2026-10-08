@@ -11,7 +11,7 @@ from typing import Any, Callable, Optional
 
 from .client import GlassboxClient, get_client
 from .context import get_current_span, get_current_trace, set_current_span, set_current_trace
-from .types import Span, SpanStatus, SpanType, TokenUsage, Trace, TraceStatus, extract_token_usage, calculate_cost
+from .types import LogEvent, Span, SpanStatus, SpanType, TokenUsage, Trace, TraceStatus, extract_token_usage, calculate_cost
 
 
 @contextmanager
@@ -43,7 +43,7 @@ def trace(
         raise
     finally:
         trace_obj.finish()
-        c.add_span(trace_obj.to_span())
+        c.add_trace(trace_obj)
         set_current_trace(previous_trace)
         set_current_span(previous_span)
 
@@ -51,12 +51,19 @@ def trace(
 @contextmanager
 def step_context(
     name: str,
-    step_type: SpanType = SpanType.TOOL_CALL,
+    step_type: SpanType | str = SpanType.TOOL_CALL,
     metadata: dict | None = None,
     client: Optional[GlassboxClient] = None,
 ):
     """Context manager to create a span/step within a trace."""
     c = client or get_client()
+
+    # Convert string step_type to enum if needed
+    if isinstance(step_type, str):
+        try:
+            step_type = SpanType(step_type)
+        except ValueError:
+            step_type = SpanType.CUSTOM
 
     current_trace = get_current_trace()
     current_span = get_current_span()
@@ -99,7 +106,8 @@ def step_context(
             else:
                 span.finish(SpanStatus.SUCCESS)
             span.duration_ms = duration_ms
-            c.add_span(span)
+            # Span is already added to trace via current_trace.add_span(span) above
+            # The trace will be sent as a whole when the trace context exits
         set_current_span(current_span)
 
 
@@ -217,11 +225,25 @@ def step(
     return step_context(name, step_type, metadata)
 
 
+def log(
+    message: str,
+    level: str = "info",
+    data: dict | None = None,
+    name: str = "",
+) -> LogEvent | None:
+    """Log a message to the current active span."""
+    current_span = get_current_span()
+    if current_span:
+        return current_span.log(message, level, data, name)
+    return None
+
+
 __all__ = [
     "trace",
     "step",
     "trace_decorator",
     "step_decorator",
     "capture_llm_call",
+    "log",
     "SpanContextManager",
 ]

@@ -74,7 +74,9 @@ class GlassboxDashboard {
     
     connectWebSocket() {
         try {
-            this.ws = new WebSocket(`ws://${window.location.hostname}:8080/live`);
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsHost = window.location.host || 'localhost:8000';
+            this.ws = new WebSocket(`${wsProtocol}//${wsHost}/live`);
             
             this.ws.onopen = () => {
                 this.isConnected = true;
@@ -133,7 +135,8 @@ class GlassboxDashboard {
     
     loadInitialData() {
         // Fetch initial sessions
-        fetch('http://localhost:8080/sessions')
+        const baseUrl = window.location.origin || 'http://localhost:8000';
+        fetch(`${baseUrl}/sessions`)
             .then(response => response.json())
             .then(data => {
                 this.sessions.clear();
@@ -296,7 +299,8 @@ class GlassboxDashboard {
         });
         
         // Fetch full trace data
-        fetch(`http://localhost:8080/sessions/${sessionId}/trace`)
+        const baseUrl = window.location.origin || 'http://localhost:8000';
+        fetch(`${baseUrl}/sessions/${sessionId}/trace`)
             .then(response => response.json())
             .then(traceData => {
                 this.traceData = traceData;
@@ -687,9 +691,10 @@ class GlassboxDashboard {
         }
         
         // Fetch both traces and compare
+        const baseUrl = window.location.origin || 'http://localhost:8000';
         Promise.all([
-            fetch(`http://localhost:8080/sessions/${baseSessionId}/trace`).then(r => r.json()),
-            fetch(`http://localhost:8080/sessions/${compareSessionId}/trace`).then(r => r.json())
+            fetch(`${baseUrl}/sessions/${baseSessionId}/trace`).then(r => r.json()),
+            fetch(`${baseUrl}/sessions/${compareSessionId}/trace`).then(r => r.json())
         ])
         .then(([baseTrace, compareTrace]) => {
             this.showComparisonView(baseTrace, compareTrace);

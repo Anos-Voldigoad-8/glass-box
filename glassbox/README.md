@@ -1,0 +1,167 @@
+# GLASS BOX SDK
+
+A local-first agent observability SDK for tracing LLM and tool calls in AI agent systems.
+
+## Installation
+
+```bash
+pip install glassbox
+```
+
+Or install from source:
+
+```bash
+pip install -e .
+```
+
+## Quick Start
+
+```python
+import glassbox as gb
+
+# Configure the SDK (optional - defaults to localhost:8000)
+gb.configure()
+
+# Trace a function
+@gb.trace
+def my_agent_function(user_input):
+    # This entire function will be traced
+    result = some_llm_call(user_input)
+    return result
+
+# Or use context managers
+with gb.trace("my_agent_session", agent_name="research-agent"):
+    with gb.step("search_web", "tool_call"):
+        results = search_web("latest AI news")
+    
+    with gb.step("analyze_results", "reasoning"):
+        analysis = analyze(results)
+        
+    # Automatically capture LLM token usage
+    response = openai.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": "Summarize this"}]
+    )
+    gb.capture_llm_call("gpt-4", [{"role": "user", "content": "Summarize this"}], response)
+
+# Or trace LLM calls directly
+with gb.step("llm-summarize", "llm_call") as span:
+    response = openai.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": "Summarize this article"}]
+    )
+    span.set_metadata("response_length", len(response.choices[0].message.content))
+    # The SDK will automatically extract token usage from the response
+```
+
+## Features
+
+- **Zero Configuration**: Works out-of-the-box with local SQLite storage
+- **Automatic Instrumentation**: Decorators and context managers for zero-code changes
+- **LLM Token Tracking**: Automatically extracts token usage from OpenAI, Anthropic, Ollama responses
+- **Local First**: All data stored locally by default, no external API needed
+- **Real-time Streaming**: WebSocket support for live dashboards
+- **Nested Tracing**: Trace complex agent workflows with parent/child relationships
+- **Cost Tracking**: Automatic cost estimation based on token usage
+- **Framework Agnostic**: Works with any Python code
+
+## API Reference
+
+### Configuration
+
+```python
+gb.configure(
+    endpoint="http://localhost:8000",  # Default
+    api_key=None,                      # Optional for local use
+    batch_size=10,                     # Batch size for HTTP uploads
+    flush_interval=1.0                 # Seconds between automatic flushes
+)
+```
+
+### Tracing
+
+```python
+# Context manager for entire trace
+with gb.trace("workflow-name", agent_name="my-agent"):
+    # Your agent logic here
+    pass
+
+# Context manager for individual steps
+with gb.step("tool-name", "tool_call"):
+    result = my_tool()
+
+# Function decorators
+@gb.trace
+def my_function():
+    pass
+
+@gb.step("tool-call")
+def my_tool():
+    pass
+```
+
+### LLM Tracking
+
+```python
+# Automatic token extraction
+response = openai.chat.completions.create(model="gpt-4", messages=[...])
+gb.capture_llm_call("gpt-4", [{"role": "user", "content": "Hello"}], response)
+
+# Manual span creation
+with gb.step("llm-call", "llm_call") as span:
+    response = anthropic.messages.create(...)
+    span.set_metadata("model", "claude-3-sonnet")
+    # Token usage extracted automatically
+```
+
+## Data Model
+
+### Trace
+- `id`: Unique identifier
+- `name`: Trace name
+- `agent_name`: Name of the agent
+- `status`: running/success/error/cancelled
+- `start_time`, `end_time`: Timestamps
+- `metadata`: Custom key-value data
+- `spans`: List of spans in the trace
+
+### Span
+- `id`: Unique identifier
+- `trace_id`: Parent trace ID
+- `parent_id`: Parent span ID (null for root)
+- `name`: Span name
+- `type`: llm_call/tool_call/reasoning/error/agent_step/custom
+- `status`: running/success/error/cancelled
+- `start_time`, `end_time`: Timestamps
+- `duration_ms`: Duration in milliseconds
+- `metadata`: Custom key-value data
+- `token_usage`: Token counts and cost
+- `logs`: List of log events
+- `tool_calls`: List of tool/function calls
+
+## Local Storage
+
+By default, the SDK stores traces in a local SQLite database at `~/.glassbox/traces.db`. 
+The backend server provides APIs to query this data.
+
+## Backend Integration
+
+The SDK sends traces to a GLASS BOX backend server via HTTP POST to `/ingest`.
+If no server is running, data is buffered locally and sent when a server becomes available.
+
+## Development
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Build package
+python -m build
+```
+
+## License
+
+MIT

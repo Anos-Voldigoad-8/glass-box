@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLASS BOX - Agent Observability</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="terminal-container">
+        <!-- Header -->
+        <div class="terminal-header">
+            <div class="terminal-title">
+                <span class="neon-text">GLASS BOX</span>
+                <span class="dim-text">Agent Observability Dashboard</span>
+            </div>
+            <div class="terminal-status">
+                <div class="status-indicator" id="connection-status">
+                    <span class="dot"></span>
+                    <span id="status-text">Disconnected</span>
+                </div>
+                <div class="clock" id="clock">00:00:00</div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="terminal-body">
+            <!-- Sidebar -->
+            <div class="terminal-sidebar">
+                <div class="sidebar-section">
+                    <h3 class="section-title">Sessions</h3>
+                    <div class="search-box">
+                        <input type="text" id="session-search" placeholder="Search sessions...">
+                        <span class="search-icon">[&#128269;]</span>
+                    </div>
+                    <div class="filter-box">
+                        <label>Filter by:</label>
+                        <select id="status-filter">
+                            <option value="all">All Status</option>
+                            <option value="success">Success</option>
+                            <option value="error">Error</option>
+                            <option value="running">Running</option>
+                        </select>
+                    </div>
+                    <div class="sessions-list" id="sessions-list">
+                        <!-- Sessions will be populated here -->
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3 class="section-title">Controls</h3>
+                    <div class="control-group">
+                        <button id="replay-btn" class="btn btn-secondary">Replay Mode</button>
+                        <button id="diff-btn" class="btn btn-secondary">Diff Mode</button>
+                        <button id="clear-btn" class="btn btn-danger">Clear All</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="terminal-main">
+                <!-- Trace Viewer -->
+                <div class="trace-viewer" id="trace-viewer">
+                    <div class="trace-header">
+                        <h2>Trace Viewer</h2>
+                        <div class="trace-controls">
+                            <button id="trace-refresh" class="btn btn-sm">Refresh</button>
+                            <select id="trace-view-mode">
+                                <option value="tree">Tree View</option>
+                                <option value="timeline">Timeline</option>
+                                <option value="logs">Logs Only</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="trace-content" id="trace-content">
+                        <div class="empty-state">
+                            Select a session to view its trace
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar Metrics -->
+            <div class="terminal-sidebar">
+                <div class="sidebar-section">
+                    <h3 class="section-title">Metrics</h3>
+                    <div class="metric-card">
+                        <h4>Token Usage</h4>
+                        <div class="metric-value" id="total-tokens">0</div>
+                        <div class="metric-label">Total Tokens</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Cost Estimate</h4>
+                        <div class="metric-value" id="total-cost">$0.00</div>
+                        <div class="metric-label">Estimated USD</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Latency</h4>
+                        <div class="metric-value" id="avg-latency">0ms</div>
+                        <div class="metric-label">Average</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Errors</h4>
+                        <div class="metric-value" id="error-count">0</div>
+                        <div class="metric-label">Count</div>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3 class="section-title">Controls</h3>
+                    <div class="control-group" id="replay-controls" style="display: none;">
+                        <button id="prev-step" class="btn btn-sm">&#9664; Prev</button>
+                        <button id="play-pause" class="btn btn-primary">▶️ Play</button>
+                        <button id="next-step" class="btn btn-sm">Next &#9654;</button>
+                        <div class="slider-container">
+                            <input type="range" id="replay-slider" min="0" max="100" value="0">
+                            <span id="replay-time">0:00 / 0:00</span>
+                        </div>
+                    </div>
+                    
+                    <div class="control-group" id="diff-controls" style="display: none;">
+                        <label>Compare with:</label>
+                        <select id="diff-session-select">
+                            <option value="">Select session...</option>
+                        </select>
+                        <button id="diff-compare" class="btn btn-sm">Compare</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Terminal Footer -->
+        <div class="terminal-footer">
+            <div class="footer-left">
+                <span class="dim-text">[SYSTEM]</span> 
+                <span id="system-message">Ready</span>
+            </div>
+            <div class="footer-right">
+                <span class="dim-text">[MEMORY]</span>
+                <span id="memory-usage">0 MB</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

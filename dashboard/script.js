@@ -35,6 +35,8 @@ class GlassboxDashboard {
         this.clearBtn = document.getElementById('clear-btn');
         this.traceRefresh = document.getElementById('trace-refresh');
         this.traceViewMode = document.getElementById('trace-view-mode');
+        this.exportBtn = document.getElementById('export-btn');
+        this.shortcutsBtn = document.getElementById('shortcuts-btn');
         this.replayControls = document.getElementById('replay-controls');
         this.prevStepBtn = document.getElementById('prev-step');
         this.playPauseBtn = document.getElementById('play-pause');
@@ -44,6 +46,15 @@ class GlassboxDashboard {
         this.diffControls = document.getElementById('diff-controls');
         this.diffSessionSelect = document.getElementById('diff-session-select');
         this.diffCompareBtn = document.getElementById('diff-compare');
+        
+        // Span detail panel
+        this.spanDetailPanel = document.getElementById('span-detail-panel');
+        this.spanDetailClose = document.getElementById('span-detail-close');
+        this.spanDetailContent = document.getElementById('span-detail-content');
+        
+        // Shortcuts modal
+        this.shortcutsModal = document.getElementById('shortcuts-modal');
+        this.shortcutsClose = document.getElementById('shortcuts-close');
         
         // Metrics elements
         this.totalTokensEl = document.getElementById('total-tokens');
@@ -66,6 +77,27 @@ class GlassboxDashboard {
         this.nextStepBtn.addEventListener('click', () => this.nextStep());
         this.replaySlider.addEventListener('input', (e) => this.seekTo(parseInt(e.target.value)));
         this.diffCompareBtn.addEventListener('click', () => this.compareTraces());
+        
+        // New event listeners
+        this.exportBtn.addEventListener('click', () => this.exportTrace());
+        this.shortcutsBtn.addEventListener('click', () => this.showShortcuts());
+        this.spanDetailClose.addEventListener('click', () => this.closeSpanDetail());
+        this.shortcutsClose.addEventListener('click', () => this.hideShortcuts());
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
+        
+        // Close modal on overlay click
+        this.shortcutsModal.addEventListener('click', (e) => {
+            if (e.target === this.shortcutsModal) this.hideShortcuts();
+        });
+        
+        // Close span detail on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.spanDetailPanel.classList.contains('open')) {
+                this.closeSpanDetail();
+            }
+        });
         
         // Set initial state
         this.updateConnectionStatus(false);
@@ -744,6 +776,372 @@ class GlassboxDashboard {
     
     capitalizeFirstLetter(string) {
         return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+    
+    // ===== New Methods for Phase 2 =====
+    
+    handleKeyboardShortcuts(e) {
+        // Don't trigger shortcuts when typing in input fields
+        const activeElement = document.activeElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'SELECT')) {
+            // Allow Escape to close modals even in inputs
+            if (e.key !== 'Escape') return;
+        }
+        
+        switch (e.key) {
+            // Navigation
+            case 'ArrowUp':
+                e.preventDefault();
+                this.navigateSessions(-1);
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                this.navigateSessions(1);
+                break;
+            case 'Enter':
+                if (this.shortcutsModal.style.display !== 'none') return;
+                if (this.spanDetailPanel.classList.contains('open')) return;
+                e.preventDefault();
+                this.selectFocusedSession();
+                break;
+            case 'ArrowLeft':
+                if (this.traceViewMode.value === 'tree') {
+                    this.collapseSpan();
+                }
+                break;
+            case 'ArrowRight':
+                if (this.traceViewMode.value === 'tree') {
+                    this.expandSpan();
+                }
+                break;
+            case 'j':
+            case 'J':
+                this.navigateSpanDetail(1);
+                break;
+            case 'k':
+            case 'K':
+                this.navigateSpanDetail(-1);
+                break;
+                
+            // Actions
+            case 'e':
+            case 'E':
+                if (!this.spanDetailPanel.classList.contains('open')) {
+                    this.exportTrace();
+                }
+                break;
+            case 'r':
+            case 'R':
+                this.refreshTrace();
+                break;
+            case 'f':
+            case 'F':
+                this.sessionSearch.focus();
+                break;
+            case 'c':
+            case 'C':
+                if (e.ctrlKey || e.metaKey) return; // Allow copy
+                this.clearData();
+                break;
+            case 'd':
+            case 'D':
+                this.toggleDiffMode();
+                break;
+            case 'p':
+            case 'P':
+                this.toggleReplayMode();
+                break;
+                
+            // View modes
+            case '1':
+                this.traceViewMode.value = 'tree';
+                this.renderTrace();
+                break;
+            case '2':
+                this.traceViewMode.value = 'timeline';
+                this.renderTrace();
+                break;
+            case '3':
+                this.traceViewMode.value = 'logs';
+                this.renderTrace();
+                break;
+                
+            // General
+            case '?':
+                if (e.shiftKey) {
+                    e.preventDefault();
+                    this.showShortcuts();
+                }
+                break;
+            case 'Escape':
+                if (this.shortcutsModal.style.display !== 'none') {
+                    this.hideShortcuts();
+                } else if (this.spanDetailPanel.classList.contains('open')) {
+                    this.closeSpanDetail();
+                } else if (this.replayControls.style.display !== 'none') {
+                    this.toggleReplayMode();
+                } else if (this.diffControls.style.display !== 'none') {
+                    this.toggleDiffMode();
+                }
+                break;
+        }
+    }
+    
+    navigateSessions(direction) {
+        const sessionItems = Array.from(this.sessionsList.querySelectorAll('.session-item:not([style*="display: none"])'));
+        if (sessionItems.length === 0) return;
+        
+        let currentIndex = sessionItems.findIndex(item => item.classList.contains('active'));
+        if (currentIndex === -1) {
+            currentIndex = direction > 0 ? 0 : sessionItems.length - 1;
+        } else {
+            currentIndex = (currentIndex + direction + sessionItems.length) % sessionItems.length;
+        }
+        
+        const sessionId = sessionItems[currentIndex].dataset.sessionId;
+        sessionItems[currentIndex].scrollIntoView({ block: 'nearest' });
+        this.selectSession(sessionId);
+    }
+    
+    selectFocusedSession() {
+        const activeItem = this.sessionsList.querySelector('.session-item.active');
+        if (activeItem) {
+            this.selectSession(activeItem.dataset.sessionId);
+        }
+    }
+    
+    collapseSpan() {
+        // Placeholder for future tree collapse functionality
+    }
+    
+    expandSpan() {
+        // Placeholder for future tree expand functionality
+    }
+    
+    navigateSpanDetail(direction) {
+        // Navigate between spans in detail panel
+        // Placeholder for future implementation
+    }
+    
+    exportTrace() {
+        if (!this.selectedSessionId || !this.traceData) {
+            this.showMessage("No trace selected to export");
+            return;
+        }
+        
+        const baseUrl = window.location.origin || 'http://localhost:8000';
+        const exportUrl = `${baseUrl}/sessions/${this.selectedSessionId}/export?format=json`;
+        
+        window.open(exportUrl, '_blank');
+        this.showMessage("Exporting trace...");
+    }
+    
+    showShortcuts() {
+        this.shortcutsModal.style.display = 'flex';
+    }
+    
+    hideShortcuts() {
+        this.shortcutsModal.style.display = 'none';
+    }
+    
+    openSpanDetail(span) {
+        this.currentDetailSpan = span;
+        this.renderSpanDetail(span);
+        this.spanDetailPanel.classList.add('open');
+    }
+    
+    closeSpanDetail() {
+        this.spanDetailPanel.classList.remove('open');
+        this.currentDetailSpan = null;
+    }
+    
+    renderSpanDetail(span) {
+        const tokenUsage = span.token_usage || {};
+        
+        let logsHTML = '';
+        if (span.logs && span.logs.length > 0) {
+            logsHTML = `
+                <div class="span-detail-section">
+                    <h4>Logs</h4>
+                    <div class="span-detail-logs">
+                        ${span.logs.map(log => `
+                            <div class="log-entry">
+                                <span class="log-time">${this.formatTime(new Date(log.timestamp))}</span>
+                                <span class="log-level ${log.level.toLowerCase()}">${log.level.toUpperCase()}</span>
+                                <span class="log-source">[${log.name || 'span'}]</span>
+                                <span class="log-message">${log.message}</span>
+                                ${log.data && Object.keys(log.data).length > 0 ? 
+                                    `<span class="log-data">${JSON.stringify(log.data)}</span>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        let toolCallsHTML = '';
+        if (span.tool_calls && span.tool_calls.length > 0) {
+            toolCallsHTML = `
+                <div class="span-detail-section">
+                    <h4>Tool Calls</h4>
+                    <pre>${JSON.stringify(span.tool_calls, null, 2)}</pre>
+                </div>
+            `;
+        }
+        
+        this.spanDetailContent.innerHTML = `
+            <div class="span-detail-row">
+                <span class="span-detail-label">Name:</span>
+                <span class="span-detail-value">${span.name || 'Unnamed Span'}</span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Type:</span>
+                <span class="span-detail-value"><code>${span.span_type}</code></span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Status:</span>
+                <span class="span-detail-value"><code>${span.status}</code></span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Duration:</span>
+                <span class="span-detail-value">${span.duration_ms !== undefined ? span.duration_ms.toFixed(1) + 'ms' : 'N/A'}</span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Start Time:</span>
+                <span class="span-detail-value">${span.start_time ? this.formatTime(new Date(span.start_time)) : 'N/A'}</span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">End Time:</span>
+                <span class="span-detail-value">${span.end_time ? this.formatTime(new Date(span.end_time)) : 'N/A'}</span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Model:</span>
+                <span class="span-detail-value"><code>${tokenUsage.model || 'N/A'}</code></span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Prompt Tokens:</span>
+                <span class="span-detail-value">${this.formatNumber(tokenUsage.prompt_tokens || 0)}</span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Completion Tokens:</span>
+                <span class="span-detail-value">${this.formatNumber(tokenUsage.completion_tokens || 0)}</span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Total Tokens:</span>
+                <span class="span-detail-value">${this.formatNumber(tokenUsage.total_tokens || 0)}</span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Cost:</span>
+                <span class="span-detail-value">$${(tokenUsage.cost_usd || 0).toFixed(6)}</span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Span ID:</span>
+                <span class="span-detail-value"><code>${span.id}</code></span>
+            </div>
+            <div class="span-detail-row">
+                <span class="span-detail-label">Trace ID:</span>
+                <span class="span-detail-value"><code>${span.trace_id}</code></span>
+            </div>
+            ${span.parent_id ? `
+            <div class="span-detail-row">
+                <span class="span-detail-label">Parent ID:</span>
+                <span class="span-detail-value"><code>${span.parent_id}</code></span>
+            </div>
+            ` : ''}
+            ${span.metadata && Object.keys(span.metadata).length > 0 ? `
+                <div class="span-detail-section">
+                    <h4>Metadata</h4>
+                    <pre>${JSON.stringify(span.metadata, null, 2)}</pre>
+                </div>
+            ` : ''}
+            ${logsHTML}
+            ${toolCallsHTML}
+        `;
+    }
+    
+    // Update renderSpanTree to make spans clickable
+    renderSpanTree(span, depth) {
+        const indent = 'px'.repeat(Math.max(0, depth - 1));
+        const isLastChild = true;
+        
+        return `
+            <div class="trace-node" style="margin-left: ${depth * 20}px;" data-span-id="${span.id}" tabindex="0">
+                <div class="trace-node-icon ${this.getSpanTypeClass(span.span_type)}">
+                    ${this.getSpanTypeIcon(span.span_type)}
+                </div>
+                <div class="trace-node-content">
+                    <div class="trace-node-header">
+                        <span class="trace-node-name">${span.name || 'Unnamed Span'}</span>
+                        <span class="trace-node-type ${span.span_type}">${this.formatSpanType(span.span_type)}</span>
+                        <span class="trace-node-status ${span.status}">${this.capitalizeFirstLetter(span.status)}</span>
+                    </div>
+                    <div class="trace-node-meta">
+                        ${span.duration_ms !== undefined ? `<span class="trace-node-meta-item"><i>Duration:</i> ${span.duration_ms.toFixed(1)}ms</span>` : ''}
+                        ${span.token_usage ? `<span class="trace-node-meta-item"><i>Tokens:</i> ${this.formatNumber(span.token_usage.total_tokens || 0)}</span>` : ''}
+                    </div>
+                    ${span.metadata && Object.keys(span.metadata).length > 0 ? 
+                        `<div class="trace-node-body"><strong>Metadata:</span><br><pre>${JSON.stringify(span.metadata, null, 2)}</pre></div>` : ''}
+                </div>
+                ${span.children && span.children.length > 0 ? 
+                    `<div class="trace-node-children">${span.children.map(child => this.renderSpanTree(child, depth + 1)).join('')}</div>` : ''}
+            </div>
+        `;
+    }
+    
+    // Override renderTrace to add click handlers for spans
+    renderTrace() {
+        if (!this.traceData) {
+            this.traceContent.innerHTML = '<div class="empty-state">Select a session to view its trace</div>';
+            return;
+        }
+        
+        const viewMode = this.traceViewMode.value;
+        
+        switch (viewMode) {
+            case 'tree':
+                this.renderTraceTree();
+                // Add click handlers after rendering
+                setTimeout(() => this.addSpanClickHandlers(), 0);
+                break;
+            case 'timeline':
+                this.renderTraceTimeline();
+                break;
+            case 'logs':
+                this.renderTraceLogs();
+                break;
+            default:
+                this.renderTraceTree();
+                setTimeout(() => this.addSpanClickHandlers(), 0);
+        }
+    }
+    
+    addSpanClickHandlers() {
+        document.querySelectorAll('.trace-node[data-span-id]').forEach(node => {
+            node.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const spanId = node.dataset.spanId;
+                const span = this.findSpanById(spanId);
+                if (span) {
+                    this.openSpanDetail(span);
+                    // Highlight selected node
+                    document.querySelectorAll('.trace-node').forEach(n => n.classList.remove('highlighted'));
+                    node.classList.add('highlighted');
+                }
+            });
+            
+            // Keyboard support for span selection
+            node.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    node.click();
+                }
+            });
+        });
+    }
+    
+    findSpanById(spanId) {
+        if (!this.traceData || !this.traceData.spans) return null;
+        return this.traceData.spans.find(s => s.id === spanId);
     }
 }
 

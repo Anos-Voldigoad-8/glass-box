@@ -236,22 +236,26 @@ class Trace:
         return root_span
 
 
-# Model cost estimation
+# Legacy model cost estimation (kept for backward compatibility)
+# Use glassbox.pricing.calculate_cost for dynamic pricing from pricing.yaml
 MODEL_COSTS = {
-    "gpt-4": {"input": 0.03, "output": 0.06},
-    "gpt-4-turbo": {"input": 0.01, "output": 0.03},
-    "gpt-4o": {"input": 0.005, "output": 0.015},
-    "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
-    "claude-3-opus": {"input": 0.015, "output": 0.075},
-    "claude-3-sonnet": {"input": 0.003, "output": 0.015},
-    "claude-3-haiku": {"input": 0.00025, "output": 0.00125},
-    "llama-3-70b": {"input": 0.0009, "output": 0.0009},
-    "llama-3-8b": {"input": 0.0002, "output": 0.0002},
+    "gpt4": {"input": 0.03, "output": 0.06},
+    "gpt4turbo": {"input": 0.01, "output": 0.03},
+    "gpt4o": {"input": 0.005, "output": 0.015},
+    "gpt35turbo": {"input": 0.0005, "output": 0.0015},
+    "claude3opus": {"input": 0.015, "output": 0.075},
+    "claude3sonnet": {"input": 0.003, "output": 0.015},
+    "claude3haiku": {"input": 0.00025, "output": 0.00125},
+    "llama370b": {"input": 0.0009, "output": 0.0009},
+    "llama38b": {"input": 0.0002, "output": 0.0002},
 }
 
 
 def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
-    """Calculate cost for a model call."""
+    """Calculate cost for a model call (legacy - uses hardcoded pricing).
+    
+    For dynamic pricing from pricing.yaml, use glassbox.pricing.calculate_cost instead.
+    """
     model_key = model.lower().replace(".", "").replace("-", "")
     costs = MODEL_COSTS.get(model_key, {"input": 0, "output": 0})
     return (prompt_tokens * costs["input"] / 1000) + (completion_tokens * costs["output"] / 1000)
@@ -259,44 +263,63 @@ def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> fl
 
 def extract_token_usage(response: Any, provider: str = "openai") -> TokenUsage | None:
     """Extract token usage from various provider response formats."""
-    if provider == "openai" or (hasattr(response, "usage") and response.usage is not None):
-        if hasattr(response, "usage"):
-            usage = response.usage
-            return TokenUsage(
-                prompt_tokens=getattr(usage, "prompt_tokens", 0),
-                completion_tokens=getattr(usage, "completion_tokens", 0),
-                total_tokens=getattr(usage, "total_tokens", 0),
-                model=getattr(response, "model", ""),
-            )
-    elif provider == "anthropic" and hasattr(response, "usage"):
-        usage = response.usage
-        return TokenUsage(
-            prompt_tokens=getattr(usage, "input_tokens", 0),
-            completion_tokens=getattr(usage, "output_tokens", 0),
-            total_tokens=getattr(usage, "input_tokens", 0) + getattr(usage, "output_tokens", 0),
-            model=getattr(response, "model", ""),
-        )
-    elif provider == "ollama" and hasattr(response, "prompt_eval_count"):
-        return TokenUsage(
-            prompt_tokens=getattr(response, "prompt_eval_count", 0),
-            completion_tokens=getattr(response, "eval_count", 0),
-            total_tokens=getattr(response, "prompt_eval_count", 0) + getattr(response, "eval_count", 0),
-            model=getattr(response, "model", ""),
-        )
-    elif isinstance(response, dict):
+    # Handle dict responses first (most explicit)
+    if isinstance(response, dict):
         if "usage" in response and response["usage"] is not None:
             usage = response["usage"]
-            return TokenUsage(
-                prompt_tokens=usage.get("prompt_tokens", 0),
-                completion_tokens=usage.get("completion_tokens", 0),
-                total_tokens=usage.get("total_tokens", 0),
-                model=response.get("model", ""),
-            )
+            if provider == "anthropic" or "input_tokens" in usage:
+                # Anthropic format
+                return TokenUsage(
+                    prompt_tokens=usage.get("input_tokens", 0),
+                    completion_tokens=usage.get("output_tokens", 0),
+                    total_tokens=usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+                    model=response.get("model", ""),
+                )
+            else:
+                # OpenAI format
+                return TokenUsage(
+                    prompt_tokens=usage.get("prompt_tokens", 0),
+                    completion_tokens=usage.get("completion_tokens", 0),
+                    total_tokens=usage.get("total_tokens", 0),
+                    model=response.get("model", ""),
+                )
         elif "prompt_eval_count" in response:
+            # Ollama format
             return TokenUsage(
                 prompt_tokens=response.get("prompt_eval_count", 0),
                 completion_tokens=response.get("eval_count", 0),
                 total_tokens=response.get("prompt_eval_count", 0) + response.get("eval_count", 0),
                 model=response.get("model", ""),
             )
+    
+    # Handle object responses
+    if hasattr(response, "usage") and response.usage is not None:
+        usage = response.usage
+        
+        if provider == "anthropic" or (hasattr(usage, "input_tokens") and hasattr(usage, "output_tokens")):
+            # Anthropic format
+            return TokenUsage(
+                prompt_tokens=getattr(usage, "input_tokens", 0),
+                completion_tokens=getattr(usage, "output_tokens", 0),
+                total_tokens=getattr(usage, "input_tokens", 0) + getattr(usage, "output_tokens", 0),
+                model=getattr(response, "model", ""),
+            )
+        elif hasattr(usage, "prompt_tokens") or hasattr(usage, "completion_tokens"):
+            # OpenAI format
+            return TokenUsage(
+                prompt_tokens=getattr(usage, "prompt_tokens", 0),
+                completion_tokens=getattr(usage, "completion_tokens", 0),
+                total_tokens=getattr(usage, "total_tokens", 0),
+                model=getattr(response, "model", ""),
+            )
+    
+    # Handle Ollama object responses
+    if provider == "ollama" and hasattr(response, "prompt_eval_count"):
+        return TokenUsage(
+            prompt_tokens=getattr(response, "prompt_eval_count", 0),
+            completion_tokens=getattr(response, "eval_count", 0),
+            total_tokens=getattr(response, "prompt_eval_count", 0) + getattr(response, "eval_count", 0),
+            model=getattr(response, "model", ""),
+        )
+    
     return None

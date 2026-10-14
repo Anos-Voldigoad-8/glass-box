@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "glassbox"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first agent observability SDK for GLASS BOX"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,6 +26,7 @@ classifiers = [
 # Dependencies
 dependencies = [
     "httpx>=0.25.0",
+    "pyyaml>=6.0",
 ]
 
 # Optional dependencies
@@ -38,6 +39,7 @@ dev = [
     "mypy>=1.7.0",
     "openai>=1.0.0",
     "anthropic>=0.7.0",
+    "langchain-core>=0.1.0",
 ]
 
 # Package discovery
@@ -54,3 +56,10 @@ target-version = "py310"
 python_version = "3.10"
 warn_return_any = true
 warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

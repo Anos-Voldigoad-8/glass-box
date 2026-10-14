@@ -15,6 +15,7 @@ from typing import Any, Optional
 import httpx
 
 from .types import Span, SpanType, SpanStatus, TokenUsage, Trace, extract_token_usage
+from .pricing import calculate_cost as dynamic_calculate_cost, normalize_provider
 
 logger = logging.getLogger(__name__)
 
@@ -138,8 +139,9 @@ class GlassboxClient:
         usage = extract_token_usage(response, provider)
         cost = 0.0
         if usage:
-            from .types import calculate_cost
-            cost = calculate_cost(model, usage.prompt_tokens, usage.completion_tokens)
+            # Use dynamic pricing with provider normalization
+            normalized_provider = normalize_provider(provider)
+            cost = dynamic_calculate_cost(normalized_provider, model, usage.prompt_tokens, usage.completion_tokens)
             usage.cost_usd = cost
 
         from .context import get_current_trace, get_current_span

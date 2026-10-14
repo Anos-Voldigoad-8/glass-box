@@ -1,0 +1,144 @@
+# GLASS BOX Model Pricing Configuration
+# All prices are in USD per 1M tokens
+# Updated as of 2024 - override with environment variables or config file
+
+openai:
+  gpt-4:
+    input: 30.00
+    output: 60.00
+  gpt-4-32k:
+    input: 60.00
+    output: 120.00
+  gpt-4-turbo:
+    input: 10.00
+    output: 30.00
+  gpt-4-turbo-preview:
+    input: 10.00
+    output: 30.00
+  gpt-4o:
+    input: 5.00
+    output: 15.00
+  gpt-4o-mini:
+    input: 0.15
+    output: 0.60
+  gpt-4o-2024-05-13:
+    input: 5.00
+    output: 15.00
+  gpt-4o-2024-08-06:
+    input: 2.50
+    output: 10.00
+  gpt-4o-2024-11-20:
+    input: 2.50
+    output: 10.00
+  gpt-3.5-turbo:
+    input: 0.50
+    output: 1.50
+  gpt-3.5-turbo-16k:
+    input: 1.00
+    output: 2.00
+  gpt-3.5-turbo-0125:
+    input: 0.50
+    output: 1.50
+  text-embedding-3-small:
+    input: 0.02
+    output: 0.00
+  text-embedding-3-large:
+    input: 0.13
+    output: 0.00
+  text-embedding-ada-002:
+    input: 0.10
+    output: 0.00
+
+anthropic:
+  claude-3-opus-20240229:
+    input: 15.00
+    output: 75.00
+  claude-3-sonnet-20240229:
+    input: 3.00
+    output: 15.00
+  claude-3-haiku-20240307:
+    input: 0.25
+    output: 1.25
+  claude-3-5-sonnet-20240620:
+    input: 3.00
+    output: 15.00
+  claude-3-5-sonnet-20241022:
+    input: 3.00
+    output: 15.00
+  claude-3-5-haiku-20241022:
+    input: 1.00
+    output: 5.00
+
+google:
+  gemini-1.5-pro:
+    input: 3.50
+    output: 10.50
+  gemini-1.5-flash:
+    input: 0.075
+    output: 0.30
+  gemini-1.0-pro:
+    input: 0.50
+    output: 1.50
+  text-embedding-004:
+    input: 0.02
+    output: 0.00
+
+mistral:
+  mistral-large:
+    input: 8.00
+    output: 24.00
+  mistral-medium:
+    input: 2.70
+    output: 8.10
+  mistral-small:
+    input: 2.00
+    output: 6.00
+  mistral-7b:
+    input: 0.25
+    output: 0.25
+  mixtral-8x7b:
+    input: 0.70
+    output: 0.70
+  mistral-embed:
+    input: 0.10
+    output: 0.00
+
+cohere:
+  command-r-plus:
+    input: 3.00
+    output: 15.00
+  command-r:
+    input: 0.50
+    output: 1.50
+  command-light:
+    input: 0.30
+    output: 0.60
+  embed-english-v3.0:
+    input: 0.10
+    output: 0.00
+  embed-multilingual-v3.0:
+    input: 0.10
+    output: 0.00
+
+# Perplexity models
+perplexity:
+  llama-3.1-sonar-small-128k-online:
+    input: 0.20
+    output: 0.20
+  llama-3.1-sonar-large-128k-online:
+    input: 1.00
+    output: 1.00
+  llama-3.1-sonar-huge-128k-online:
+    input: 5.00
+    output: 5.00
+
+# Ollama (local) - zero cost
+ollama:
+  "*":
+    input: 0.00
+    output: 0.00
+
+# Default fallback pricing
+default:
+  input: 0.00
+  output: 0.00

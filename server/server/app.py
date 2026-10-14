@@ -2,11 +2,12 @@
 GLASS BOX Backend - FastAPI Application
 """
 
-from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 import sqlite3
 import json
 import uuid
@@ -14,6 +15,8 @@ from datetime import datetime
 import asyncio
 from contextlib import asynccontextmanager
 import os
+import io
+import csv
 
 
 # Database setup
@@ -324,19 +327,68 @@ async def ingest_trace(trace: TraceCreate, db: sqlite3.Connection = Depends(get_
 @app.get("/sessions", response_model=List[TraceResponse])
 async def list_sessions(
     status: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0,
+    agent_name: Optional[str] = None,
+    name: Optional[str] = None,
+    start_time_after: Optional[str] = None,
+    start_time_before: Optional[str] = None,
+    min_duration_ms: Optional[float] = None,
+    max_duration_ms: Optional[float] = None,
+    has_errors: Optional[bool] = None,
+    sort_by: Literal["start_time", "duration_ms", "name", "agent_name"] = "start_time",
+    sort_order: Literal["asc", "desc"] = "desc",
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     db: sqlite3.Connection = Depends(get_db)
 ):
-    """List all traces/sessions."""
+    """List all traces/sessions with filtering and pagination."""
     query = "SELECT * FROM traces"
     params = []
+    conditions = []
 
     if status:
-        query += " WHERE status = ?"
+        conditions.append("status = ?")
         params.append(status)
 
-    query += " ORDER BY start_time DESC LIMIT ? OFFSET ?"
+    if agent_name:
+        conditions.append("agent_name LIKE ?")
+        params.append(f"%{agent_name}%")
+
+    if name:
+        conditions.append("name LIKE ?")
+        params.append(f"%{name}%")
+
+    if start_time_after:
+        conditions.append("start_time >= ?")
+        params.append(start_time_after)
+
+    if start_time_before:
+        conditions.append("start_time <= ?")
+        params.append(start_time_before)
+
+    if min_duration_ms is not None:
+        conditions.append("duration_ms >= ?")
+        params.append(min_duration_ms)
+
+    if max_duration_ms is not None:
+        conditions.append("duration_ms <= ?")
+        params.append(max_duration_ms)
+
+    if has_errors is not None:
+        if has_errors:
+            conditions.append("status = 'error'")
+        else:
+            conditions.append("status != 'error'")
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    # Validate sort_by to prevent SQL injection
+    valid_sort_columns = {"start_time", "duration_ms", "name", "agent_name"}
+    if sort_by not in valid_sort_columns:
+        sort_by = "start_time"
+
+    sort_direction = "DESC" if sort_order == "desc" else "ASC"
+    query += f" ORDER BY {sort_by} {sort_direction} LIMIT ? OFFSET ?"
     params.extend([limit, offset])
 
     cursor = db.cursor()
@@ -436,6 +488,158 @@ async def get_stats(db: sqlite3.Connection = Depends(get_db)):
         "status_counts": status_counts,
         "recent_traces_last_hour": recent_traces
     }
+
+
+# Trace export endpoints
+@app.get("/sessions/{trace_id}/export")
+async def export_trace(
+    trace_id: str,
+    format: Literal["json", "csv"] = "json",
+    db: sqlite3.Connection = Depends(get_db)
+):
+    """Export a trace in JSON or CSV format."""
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM traces WHERE id = ?", (trace_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Trace not found")
+
+    trace_response = row_to_trace(row)
+
+    if format == "json":
+        # Return full trace as JSON
+        return trace_response.dict()
+
+    elif format == "csv":
+        # Export spans as CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write header
+        writer.writerow([
+            "span_id", "trace_id", "parent_id", "name", "span_type",
+            "status", "start_time", "end_time", "duration_ms",
+            "model", "prompt_tokens", "completion_tokens", "total_tokens", "cost_usd",
+            "metadata"
+        ])
+
+        # Write spans
+        for span in trace_response.spans:
+            token_usage = span.token_usage or {}
+            writer.writerow([
+                span.id,
+                span.trace_id,
+                span.parent_id or "",
+                span.name,
+                span.span_type,
+                span.status,
+                span.start_time,
+                span.end_time or "",
+                span.duration_ms,
+                token_usage.get("model", "") if token_usage else "",
+                token_usage.get("prompt_tokens", 0) if token_usage else 0,
+                token_usage.get("completion_tokens", 0) if token_usage else 0,
+                token_usage.get("total_tokens", 0) if token_usage else 0,
+                token_usage.get("cost_usd", 0.0) if token_usage else 0.0,
+                json.dumps(span.metadata) if span.metadata else "",
+            ])
+
+        output.seek(0)
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode()),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=trace_{trace_id}.csv"}
+        )
+
+
+@app.get("/export/sessions")
+async def export_sessions(
+    format: Literal["json", "csv"] = "json",
+    status: Optional[str] = None,
+    agent_name: Optional[str] = None,
+    start_time_after: Optional[str] = None,
+    start_time_before: Optional[str] = None,
+    limit: int = Query(1000, ge=1, le=10000),
+    db: sqlite3.Connection = Depends(get_db)
+):
+    """Export multiple sessions in JSON or CSV format."""
+    query = "SELECT * FROM traces"
+    params = []
+    conditions = []
+
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+
+    if agent_name:
+        conditions.append("agent_name LIKE ?")
+        params.append(f"%{agent_name}%")
+
+    if start_time_after:
+        conditions.append("start_time >= ?")
+        params.append(start_time_after)
+
+    if start_time_before:
+        conditions.append("start_time <= ?")
+        params.append(start_time_before)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    query += " ORDER BY start_time DESC LIMIT ?"
+    params.append(limit)
+
+    cursor = db.cursor()
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    traces = [row_to_trace(row) for row in rows]
+
+    if format == "json":
+        return [t.dict() for t in traces]
+
+    elif format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write header
+        writer.writerow([
+            "trace_id", "name", "agent_name", "status",
+            "start_time", "end_time", "duration_ms",
+            "span_count", "total_tokens", "total_cost_usd",
+            "metadata"
+        ])
+
+        # Write traces
+        for trace in traces:
+            total_tokens = 0
+            total_cost = 0.0
+            for span in trace.spans:
+                if span.token_usage:
+                    total_tokens += span.token_usage.get("total_tokens", 0)
+                    total_cost += span.token_usage.get("cost_usd", 0.0)
+
+            writer.writerow([
+                trace.id,
+                trace.name,
+                trace.agent_name,
+                trace.status,
+                trace.start_time,
+                trace.end_time or "",
+                trace.duration_ms,
+                len(trace.spans),
+                total_tokens,
+                total_cost,
+                json.dumps(trace.metadata) if trace.metadata else "",
+            ])
+
+        output.seek(0)
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode()),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=sessions_export.csv"}
+        )
 
 
 if __name__ == "__main__":

@@ -70,6 +70,8 @@
                                 <option value="timeline">Timeline</option>
                                 <option value="logs">Logs Only</option>
                             </select>
+                            <button id="export-btn" class="btn btn-sm" title="Export trace (E)">Export</button>
+                            <button id="shortcuts-btn" class="btn btn-sm" title="Keyboard shortcuts (?)">?</button>
                         </div>
                     </div>
                     <div class="trace-content" id="trace-content">
@@ -124,6 +126,64 @@
                             <option value="">Select session...</option>
                         </select>
                         <button id="diff-compare" class="btn btn-sm">Compare</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Span Detail Panel (Slide-in from right) -->
+        <div class="span-detail-panel" id="span-detail-panel">
+            <div class="span-detail-header">
+                <h3>Span Details</h3>
+                <button id="span-detail-close" class="btn btn-sm btn-ghost">✕</button>
+            </div>
+            <div class="span-detail-content" id="span-detail-content">
+                <div class="empty-state">Click a span to view details</div>
+            </div>
+        </div>
+
+        <!-- Keyboard Shortcuts Modal -->
+        <div class="modal-overlay" id="shortcuts-modal" style="display: none;">
+            <div class="modal-content shortcuts-modal">
+                <div class="modal-header">
+                    <h3>Keyboard Shortcuts</h3>
+                    <button id="shortcuts-close" class="btn btn-ghost">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="shortcut-category">
+                        <h4>Navigation</h4>
+                        <table class="shortcuts-table">
+                            <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Navigate sessions</td></tr>
+                            <tr><td><kbd>Enter</kbd></td><td>Select session</td></tr>
+                            <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>Collapse/expand span (tree view)</td></tr>
+                            <tr><td><kbd>J</kbd> / <kbd>K</kbd></td><td>Next/previous span in detail</td></tr>
+                        </table>
+                    </div>
+                    <div class="shortcut-category">
+                        <h4>Actions</h4>
+                        <table class="shortcuts-table">
+                            <tr><td><kbd>E</kbd></td><td>Export current trace</td></tr>
+                            <tr><td><kbd>R</kbd></td><td>Refresh trace</td></tr>
+                            <tr><td><kbd>F</kbd></td><td>Focus search</td></tr>
+                            <tr><td><kbd>C</kbd></td><td>Clear all data</td></tr>
+                            <tr><td><kbd>D</kbd></td><td>Toggle diff mode</td></tr>
+                            <tr><td><kbd>P</kbd></td><td>Toggle replay mode</td></tr>
+                        </table>
+                    </div>
+                    <div class="shortcut-category">
+                        <h4>View Modes</h4>
+                        <table class="shortcuts-table">
+                            <tr><td><kbd>1</kbd></td><td>Tree view</td></tr>
+                            <tr><td><kbd>2</kbd></td><td>Timeline view</td></tr>
+                            <tr><td><kbd>3</kbd></td><td>Logs view</td></tr>
+                        </table>
+                    </div>
+                    <div class="shortcut-category">
+                        <h4>General</h4>
+                        <table class="shortcuts-table">
+                            <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
+                            <tr><td><kbd>Esc</kbd></td><td>Close modal / panel</td></tr>
+                        </table>
                     </div>
                 </div>
             </div>

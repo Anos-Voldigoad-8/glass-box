@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import threading
-import time
 import uuid
 from collections import deque
-from dataclasses import asdict
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
-from .types import Span, SpanType, SpanStatus, TokenUsage, Trace, extract_token_usage
-from .pricing import calculate_cost as dynamic_calculate_cost, normalize_provider
+from .pricing import calculate_cost as dynamic_calculate_cost
+from .pricing import normalize_provider
+from .types import Span, SpanStatus, SpanType, Trace, extract_token_usage
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +27,7 @@ class GlassboxClient:
         api_key: str | None = None,
         batch_size: int = 10,
         flush_interval: float = 1.0,
-        logger: Optional[logging.Logger] = None,
+        logger: logging.Logger | None = None,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.api_key = api_key
@@ -39,9 +37,9 @@ class GlassboxClient:
 
         self._buffer: deque[Span] = deque()
         self._lock = threading.Lock()
-        self._flush_task: Optional[asyncio.Task] = None
+        self._flush_task: asyncio.Task | None = None
         self._running = False
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -144,7 +142,7 @@ class GlassboxClient:
             cost = dynamic_calculate_cost(normalized_provider, model, usage.prompt_tokens, usage.completion_tokens)
             usage.cost_usd = cost
 
-        from .context import get_current_trace, get_current_span
+        from .context import get_current_span, get_current_trace
 
         current_trace = get_current_trace()
         current_span = get_current_span()
@@ -213,7 +211,7 @@ class GlassboxClient:
             await self._client.aclose()
 
 
-_global_client: Optional[GlassboxClient] = None
+_global_client: GlassboxClient | None = None
 
 
 def get_client() -> GlassboxClient:

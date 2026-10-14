@@ -5,13 +5,12 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
-from contextvars import ContextVar
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from .client import GlassboxClient, get_client
-from .context import get_current_trace, get_current_span, set_current_span
+from .context import get_current_trace, set_current_span
+from .pricing import calculate_cost as dynamic_calculate_cost
 from .types import (
-    LogEvent,
     Span,
     SpanStatus,
     SpanType,
@@ -19,7 +18,6 @@ from .types import (
     Trace,
     TraceStatus,
 )
-from .pricing import calculate_cost as dynamic_calculate_cost, normalize_provider
 
 if False:  # TYPE_CHECKING
     from langchain_core.callbacks import BaseCallbackHandler
@@ -31,7 +29,7 @@ logger = logging.getLogger(__name__)
 _local = threading.local()
 
 
-def _get_callback_state() -> Dict[str, Any]:
+def _get_callback_state() -> dict[str, Any]:
     """Get or create callback state for current thread."""
     if not hasattr(_local, "glassbox_state"):
         _local.glassbox_state = {
@@ -63,7 +61,7 @@ class GlassboxCallbackHandler:
 
     def __init__(
         self,
-        glassbox_client: Optional[GlassboxClient] = None,
+        glassbox_client: GlassboxClient | None = None,
         trace_name: str = "langchain.run",
         capture_inputs: bool = True,
         capture_outputs: bool = True,
@@ -76,8 +74,8 @@ class GlassboxCallbackHandler:
         self.capture_metadata = capture_metadata
 
         # State for tracking nested operations
-        self._trace: Optional[Trace] = None
-        self._span_stack: List[Span] = []
+        self._trace: Trace | None = None
+        self._span_stack: list[Span] = []
 
     def _get_or_create_trace(self) -> Trace:
         """Get existing trace or create a new one."""
@@ -98,8 +96,8 @@ class GlassboxCallbackHandler:
         self,
         name: str,
         span_type: SpanType = SpanType.CUSTOM,
-        parent: Optional[Span] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent: Span | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Span:
         """Create a new span and add it to the trace."""
         trace = self._get_or_create_trace()
@@ -124,7 +122,7 @@ class GlassboxCallbackHandler:
         self,
         span: Span,
         status: SpanStatus = SpanStatus.SUCCESS,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         """Finish a span and pop from stack."""
         span.finish(status, error)
@@ -139,13 +137,13 @@ class GlassboxCallbackHandler:
 
     def on_llm_start(
         self,
-        serialized: Dict[str, Any],
-        prompts: List[str],
+        serialized: dict[str, Any],
+        prompts: list[str],
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent_run_id: uuid.UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when LLM starts."""
@@ -173,10 +171,10 @@ class GlassboxCallbackHandler:
 
     def on_llm_end(
         self,
-        response: "LLMResult",
+        response: LLMResult,
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
+        parent_run_id: uuid.UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when LLM ends successfully."""
@@ -236,7 +234,7 @@ class GlassboxCallbackHandler:
         error: BaseException,
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
+        parent_run_id: uuid.UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when LLM errors."""
@@ -256,13 +254,13 @@ class GlassboxCallbackHandler:
 
     def on_chain_start(
         self,
-        serialized: Dict[str, Any],
-        inputs: Dict[str, Any],
+        serialized: dict[str, Any],
+        inputs: dict[str, Any],
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent_run_id: uuid.UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when chain starts."""
@@ -287,10 +285,10 @@ class GlassboxCallbackHandler:
 
     def on_chain_end(
         self,
-        outputs: Dict[str, Any],
+        outputs: dict[str, Any],
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
+        parent_run_id: uuid.UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when chain ends successfully."""
@@ -313,7 +311,7 @@ class GlassboxCallbackHandler:
         error: BaseException,
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
+        parent_run_id: uuid.UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when chain errors."""
@@ -327,13 +325,13 @@ class GlassboxCallbackHandler:
 
     def on_tool_start(
         self,
-        serialized: Dict[str, Any],
+        serialized: dict[str, Any],
         input_str: str,
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent_run_id: uuid.UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when tool starts."""
@@ -361,7 +359,7 @@ class GlassboxCallbackHandler:
         output: str,
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
+        parent_run_id: uuid.UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when tool ends successfully."""
@@ -378,7 +376,7 @@ class GlassboxCallbackHandler:
         error: BaseException,
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
+        parent_run_id: uuid.UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when tool errors."""
@@ -395,7 +393,7 @@ class GlassboxCallbackHandler:
         action: Any,
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
+        parent_run_id: uuid.UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when agent takes an action."""
@@ -421,7 +419,7 @@ class GlassboxCallbackHandler:
         finish: Any,
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
+        parent_run_id: uuid.UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when agent finishes."""
@@ -438,13 +436,13 @@ class GlassboxCallbackHandler:
 
     def on_retriever_start(
         self,
-        serialized: Dict[str, Any],
+        serialized: dict[str, Any],
         query: str,
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent_run_id: uuid.UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when retriever starts."""
@@ -467,10 +465,10 @@ class GlassboxCallbackHandler:
 
     def on_retriever_end(
         self,
-        documents: List[Any],
+        documents: list[Any],
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
+        parent_run_id: uuid.UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when retriever ends successfully."""
@@ -491,7 +489,7 @@ class GlassboxCallbackHandler:
         error: BaseException,
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
+        parent_run_id: uuid.UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when retriever errors."""
@@ -505,13 +503,13 @@ class GlassboxCallbackHandler:
 
     def on_chat_model_start(
         self,
-        serialized: Dict[str, Any],
-        messages: List[List[Any]],
+        serialized: dict[str, Any],
+        messages: list[list[Any]],
         *,
         run_id: uuid.UUID,
-        parent_run_id: Optional[uuid.UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent_run_id: uuid.UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when chat model starts."""
@@ -521,11 +519,11 @@ class GlassboxCallbackHandler:
 
     # ===== Utility Methods =====
 
-    def get_trace(self) -> Optional[Trace]:
+    def get_trace(self) -> Trace | None:
         """Get the current trace (if any)."""
         return self._trace
 
-    def finish_trace(self, status: TraceStatus = TraceStatus.SUCCESS, error: Optional[str] = None) -> Optional[Trace]:
+    def finish_trace(self, status: TraceStatus = TraceStatus.SUCCESS, error: str | None = None) -> Trace | None:
         """Finish the current trace and send to backend."""
         if self._trace:
             # Finish any remaining spans
@@ -543,7 +541,7 @@ class GlassboxCallbackHandler:
             return trace
         return None
 
-    def __enter__(self) -> "GlassboxCallbackHandler":
+    def __enter__(self) -> GlassboxCallbackHandler:
         """Context manager entry."""
         return self
 
@@ -555,7 +553,7 @@ class GlassboxCallbackHandler:
 
 # Convenience function for easy integration
 def get_langchain_callback(
-    glassbox_client: Optional[GlassboxClient] = None,
+    glassbox_client: GlassboxClient | None = None,
     **kwargs: Any,
 ) -> GlassboxCallbackHandler:
     """Get a GlassboxCallbackHandler instance for LangChain integration.
@@ -576,7 +574,6 @@ try:
 
     class _GlassboxCallbackHandlerWithBase(GlassboxCallbackHandler, BaseCallbackHandler):
         """GlassboxCallbackHandler that inherits from BaseCallbackHandler for LangChain compatibility."""
-        pass
 
     # Replace the original class
     GlassboxCallbackHandler = _GlassboxCallbackHandlerWithBase

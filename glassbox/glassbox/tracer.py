@@ -5,13 +5,20 @@ from __future__ import annotations
 import functools
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import contextmanager
-from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any
 
 from .client import GlassboxClient, get_client
 from .context import get_current_span, get_current_trace, set_current_span, set_current_trace
-from .types import LogEvent, Span, SpanStatus, SpanType, TokenUsage, Trace, TraceStatus, extract_token_usage, calculate_cost
+from .types import (
+    LogEvent,
+    Span,
+    SpanStatus,
+    SpanType,
+    Trace,
+    TraceStatus,
+)
 
 
 @contextmanager
@@ -19,7 +26,7 @@ def trace(
     name: str,
     agent_name: str = "unknown",
     metadata: dict | None = None,
-    client: Optional[GlassboxClient] = None,
+    client: GlassboxClient | None = None,
 ):
     """Context manager to create a trace."""
     c = client or get_client()
@@ -53,7 +60,7 @@ def step_context(
     name: str,
     step_type: SpanType | str = SpanType.TOOL_CALL,
     metadata: dict | None = None,
-    client: Optional[GlassboxClient] = None,
+    client: GlassboxClient | None = None,
 ):
     """Context manager to create a span/step within a trace."""
     c = client or get_client()
@@ -130,7 +137,7 @@ def trace_decorator(
                     result = func(*args, **kwargs)
                     trace_obj.metadata["result_type"] = type(result).__name__
                     return result
-                except Exception as e:
+                except Exception:
                     raise
                 finally:
                     trace_obj.metadata["duration_ms"] = (time.perf_counter() - start_time) * 1000
@@ -145,7 +152,7 @@ def trace_decorator(
                     result = await func(*args, **kwargs)
                     trace_obj.metadata["result_type"] = type(result).__name__
                     return result
-                except Exception as e:
+                except Exception:
                     raise
                 finally:
                     trace_obj.metadata["duration_ms"] = (time.perf_counter() - start_time) * 1000
@@ -176,7 +183,7 @@ def step_decorator(
                     result = func(*args, **kwargs)
                     span_obj.metadata["result_type"] = type(result).__name__
                     return result
-                except Exception as e:
+                except Exception:
                     raise
                 finally:
                     span_obj.metadata["duration_ms"] = (time.perf_counter() - start_time) * 1000
@@ -191,7 +198,7 @@ def step_decorator(
                     result = await func(*args, **kwargs)
                     span_obj.metadata["result_type"] = type(result).__name__
                     return result
-                except Exception as e:
+                except Exception:
                     raise
                 finally:
                     span_obj.metadata["duration_ms"] = (time.perf_counter() - start_time) * 1000
@@ -209,7 +216,7 @@ def capture_llm_call(
     messages: list[dict],
     response: Any,
     provider: str = "openai",
-    client: Optional[GlassboxClient] = None,
+    client: GlassboxClient | None = None,
 ) -> Span:
     """Capture an LLM call from a response object."""
     c = client or get_client()
@@ -239,11 +246,11 @@ def log(
 
 
 __all__ = [
-    "trace",
-    "step",
-    "trace_decorator",
-    "step_decorator",
+    "SpanContextManager",
     "capture_llm_call",
     "log",
-    "SpanContextManager",
+    "step",
+    "step_decorator",
+    "trace",
+    "trace_decorator",
 ]

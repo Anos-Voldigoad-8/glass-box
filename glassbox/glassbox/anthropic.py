@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import functools
 import logging
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .client import GlassboxClient, get_client
-from .context import get_current_trace, get_current_span
+from .context import get_current_span, get_current_trace
+from .pricing import calculate_cost as dynamic_calculate_cost
 from .types import Span, SpanStatus, SpanType, TokenUsage, calculate_cost
-from .pricing import calculate_cost as dynamic_calculate_cost, normalize_provider
 
 if TYPE_CHECKING:
     from anthropic import Anthropic as AnthropicClient
@@ -23,8 +23,8 @@ class TracedAnthropic:
 
     def __init__(
         self,
-        client: "AnthropicClient",
-        glassbox_client: Optional[GlassboxClient] = None,
+        client: AnthropicClient,
+        glassbox_client: GlassboxClient | None = None,
         trace_name: str = "anthropic.call",
     ):
         self._client = client
@@ -32,7 +32,7 @@ class TracedAnthropic:
         self._trace_name = trace_name
 
     @property
-    def client(self) -> "AnthropicClient":
+    def client(self) -> AnthropicClient:
         """Access the underlying Anthropic client."""
         return self._client
 
@@ -46,7 +46,6 @@ class TracedAnthropic:
         **kwargs: Any,
     ) -> Span:
         """Create a span for an LLM call."""
-        from .context import get_current_trace, get_current_span
 
         current_trace = get_current_trace()
         current_span = get_current_span()
@@ -152,8 +151,8 @@ class TracedAsyncAnthropic:
 
     def __init__(
         self,
-        client: "AsyncAnthropicClient",
-        glassbox_client: Optional[GlassboxClient] = None,
+        client: AsyncAnthropicClient,
+        glassbox_client: GlassboxClient | None = None,
         trace_name: str = "anthropic.call",
     ):
         self._client = client
@@ -161,7 +160,7 @@ class TracedAsyncAnthropic:
         self._trace_name = trace_name
 
     @property
-    def client(self) -> "AsyncAnthropicClient":
+    def client(self) -> AsyncAnthropicClient:
         """Access the underlying AsyncAnthropic client."""
         return self._client
 
@@ -296,8 +295,8 @@ class TracedAsyncStream:
 
 
 def wrap_anthropic(
-    client: "AnthropicClient",
-    glassbox_client: Optional[GlassboxClient] = None,
+    client: AnthropicClient,
+    glassbox_client: GlassboxClient | None = None,
     trace_name: str = "anthropic.call",
 ) -> TracedAnthropic:
     """Wrap an Anthropic client to automatically trace API calls.
@@ -316,8 +315,8 @@ def wrap_anthropic(
 
 
 def wrap_async_anthropic(
-    client: "AsyncAnthropicClient",
-    glassbox_client: Optional[GlassboxClient] = None,
+    client: AsyncAnthropicClient,
+    glassbox_client: GlassboxClient | None = None,
     trace_name: str = "anthropic.call",
 ) -> TracedAsyncAnthropic:
     """Wrap an AsyncAnthropic client to automatically trace API calls.
@@ -335,7 +334,7 @@ def wrap_async_anthropic(
     return TracedAsyncAnthropic(client, glassbox_client, trace_name)
 
 
-def patch_anthropic(glassbox_client: Optional[GlassboxClient] = None) -> None:
+def patch_anthropic(glassbox_client: GlassboxClient | None = None) -> None:
     """Patch the Anthropic module globally to auto-trace all calls.
 
     Usage:
@@ -379,7 +378,7 @@ def patch_anthropic(glassbox_client: Optional[GlassboxClient] = None) -> None:
 __all__ = [
     "TracedAnthropic",
     "TracedAsyncAnthropic",
+    "patch_anthropic",
     "wrap_anthropic",
     "wrap_async_anthropic",
-    "patch_anthropic",
 ]

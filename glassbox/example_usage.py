@@ -1,7 +1,8 @@
 """Basic test for GLASS BOX SDK."""
 
-import glassbox as gb
 import time
+
+import glassbox as gb
 
 
 def example_function():

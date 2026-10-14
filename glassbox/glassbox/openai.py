@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import functools
 import logging
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .client import GlassboxClient, get_client
-from .context import get_current_trace, get_current_span
+from .context import get_current_span, get_current_trace
+from .pricing import calculate_cost as dynamic_calculate_cost
 from .types import Span, SpanStatus, SpanType, TokenUsage, calculate_cost
-from .pricing import calculate_cost as dynamic_calculate_cost, normalize_provider
 
 if TYPE_CHECKING:
-    from openai import OpenAI as OpenAIClient
     from openai import AsyncOpenAI as AsyncOpenAIClient
+    from openai import OpenAI as OpenAIClient
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,8 @@ class TracedOpenAI:
 
     def __init__(
         self,
-        client: "OpenAIClient",
-        glassbox_client: Optional[GlassboxClient] = None,
+        client: OpenAIClient,
+        glassbox_client: GlassboxClient | None = None,
         trace_name: str = "openai.call",
     ):
         self._client = client
@@ -32,7 +32,7 @@ class TracedOpenAI:
         self._trace_name = trace_name
 
     @property
-    def client(self) -> "OpenAIClient":
+    def client(self) -> OpenAIClient:
         """Access the underlying OpenAI client."""
         return self._client
 
@@ -45,7 +45,6 @@ class TracedOpenAI:
         **kwargs: Any,
     ) -> Span:
         """Create a span for an LLM call."""
-        from .context import get_current_trace, get_current_span
 
         current_trace = get_current_trace()
         current_span = get_current_span()
@@ -175,7 +174,6 @@ class TracedOpenAI:
                 cost = calculate_cost(model, usage.prompt_tokens, 0)
                 usage.cost_usd = cost
 
-        from .context import get_current_trace, get_current_span
         current_trace = get_current_trace()
         current_span = get_current_span()
 
@@ -236,8 +234,8 @@ class TracedAsyncOpenAI:
 
     def __init__(
         self,
-        client: "AsyncOpenAIClient",
-        glassbox_client: Optional[GlassboxClient] = None,
+        client: AsyncOpenAIClient,
+        glassbox_client: GlassboxClient | None = None,
         trace_name: str = "openai.call",
     ):
         self._client = client
@@ -245,7 +243,7 @@ class TracedAsyncOpenAI:
         self._trace_name = trace_name
 
     @property
-    def client(self) -> "AsyncOpenAIClient":
+    def client(self) -> AsyncOpenAIClient:
         """Access the underlying AsyncOpenAI client."""
         return self._client
 
@@ -321,7 +319,6 @@ class TracedAsyncOpenAI:
                 cost = calculate_cost(model, usage.prompt_tokens, 0)
                 usage.cost_usd = cost
 
-        from .context import get_current_trace, get_current_span
         current_trace = get_current_trace()
         current_span = get_current_span()
 
@@ -358,8 +355,8 @@ class TracedAsyncOpenAI:
 
 
 def wrap_openai(
-    client: "OpenAIClient",
-    glassbox_client: Optional[GlassboxClient] = None,
+    client: OpenAIClient,
+    glassbox_client: GlassboxClient | None = None,
     trace_name: str = "openai.call",
 ) -> TracedOpenAI:
     """Wrap an OpenAI client to automatically trace API calls.
@@ -378,8 +375,8 @@ def wrap_openai(
 
 
 def wrap_async_openai(
-    client: "AsyncOpenAIClient",
-    glassbox_client: Optional[GlassboxClient] = None,
+    client: AsyncOpenAIClient,
+    glassbox_client: GlassboxClient | None = None,
     trace_name: str = "openai.call",
 ) -> TracedAsyncOpenAI:
     """Wrap an AsyncOpenAI client to automatically trace API calls.
@@ -398,7 +395,7 @@ def wrap_async_openai(
 
 
 # Convenience function for direct OpenAI module patching (optional)
-def patch_openai(glassbox_client: Optional[GlassboxClient] = None) -> None:
+def patch_openai(glassbox_client: GlassboxClient | None = None) -> None:
     """Patch the OpenAI module globally to auto-trace all calls.
 
     This modifies the openai.OpenAI and openai.AsyncOpenAI classes.
@@ -453,9 +450,9 @@ def patch_openai(glassbox_client: Optional[GlassboxClient] = None) -> None:
 
 
 __all__ = [
-    "TracedOpenAI",
     "TracedAsyncOpenAI",
-    "wrap_openai",
-    "wrap_async_openai",
+    "TracedOpenAI",
     "patch_openai",
+    "wrap_async_openai",
+    "wrap_openai",
 ]
